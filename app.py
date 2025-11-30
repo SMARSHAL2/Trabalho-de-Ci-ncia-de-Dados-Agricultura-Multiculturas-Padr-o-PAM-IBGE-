@@ -35,10 +35,10 @@ except FileNotFoundError:
 with st.sidebar:
     st.markdown("### Trabalho de Ciência de Dados")
     st.markdown("**Tema:** Predição de rendimento agrícola (PAM sintético)")
-    st.markdown("**Disciplina:** Processamento e Análise de Dados / Ciência de Dados")
+    st.markdown("**Disciplina:** Ciência de Dados")
     st.markdown("**Dupla:**")
-    st.markdown("- Nome do Estudante 1 – RA")
-    st.markdown("- Nome do Estudante 2 – RA")
+    st.markdown("- Jalisson Ternus – RA: 405155")
+    st.markdown("- Geslon Gish – RA: 395124")
     st.markdown("---")
     st.markdown("### Como usar o app")
     st.markdown(
