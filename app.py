@@ -3,6 +3,11 @@ import pandas as pd
 import numpy as np
 import joblib
 
+import streamlit as st
+import sklearn
+st.write("Versão do scikit-learn no Streamlit:", sklearn.__version__)
+
+
 # =========================================================
 # Configuração da página
 # =========================================================
