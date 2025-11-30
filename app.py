@@ -26,6 +26,17 @@ CSV_FILENAME = "pam_sintetico_multiculturas_50k.csv"
 
 
 # =========================================================
+# Carregar dataset com cache (usado no treino e nas análises)
+# =========================================================
+@st.cache_data
+def load_data():
+    return pd.read_csv(CSV_FILENAME)
+
+
+df_full = load_data()
+
+
+# =========================================================
 # Função auxiliar: treinar modelo do zero (fallback)
 # =========================================================
 def treinar_modelo_do_zero():
@@ -33,16 +44,11 @@ def treinar_modelo_do_zero():
     Treina um novo modelo RandomForest para rendimento_kg_ha
     a partir do arquivo CSV definido em CSV_FILENAME.
     É usado como fallback caso o .pkl não possa ser carregado.
+    (Sem exibir aviso na interface.)
     """
-    st.warning(
-        f"Não foi possível carregar o modelo salvo em arquivo. "
-        f"Um novo modelo será treinado automaticamente a partir do dataset {CSV_FILENAME}."
-    )
+    # Usa o dataset já carregado em df_full
+    df = df_full.copy()
 
-    # Carrega o dataset sintético
-    df = pd.read_csv(CSV_FILENAME)
-
-    # Define target e features igual ao notebook
     target = "rendimento_kg_ha"
     numeric_features = ["ano", "area_plantada_ha", "precipitacao_mm", "temp_media_c"]
     categorical_features = ["municipio", "cultura"]
@@ -50,7 +56,6 @@ def treinar_modelo_do_zero():
     X = df[numeric_features + categorical_features]
     y = df[target]
 
-    # Pré-processamento
     numeric_transformer = StandardScaler()
     categorical_transformer = OneHotEncoder(handle_unknown="ignore")
 
@@ -61,7 +66,6 @@ def treinar_modelo_do_zero():
         ]
     )
 
-    # Modelo
     rf_regressor = RandomForestRegressor(
         n_estimators=150,
         random_state=42,
@@ -77,25 +81,24 @@ def treinar_modelo_do_zero():
 
     model.fit(X, y)
 
-    # Opcional: tentar salvar um novo .pkl compatível com o ambiente do Streamlit
+    # Opcional: tentar salvar um novo .pkl compatível com o ambiente
     try:
         joblib.dump(model, "modelo_pam_multiculturas_streamlit.pkl", compress=3)
     except Exception:
-        # Se não conseguir salvar por algum motivo, apenas segue com o modelo em memória
         pass
 
     return model
 
 
 # =========================================================
-# Carregar modelo treinado (com fallback para treino)
+# Carregar modelo treinado (com fallback silencioso para treino)
 # =========================================================
 @st.cache_resource
 def load_model():
     """
     Tenta carregar o modelo do arquivo modelo_pam_multiculturas.pkl.
     Se falhar (por incompatibilidade de versão, pickle, etc.),
-    treina um novo modelo a partir do CSV.
+    treina um novo modelo a partir do CSV, sem mostrar aviso na tela.
     """
     try:
         return joblib.load("modelo_pam_multiculturas.pkl")
@@ -121,8 +124,8 @@ with st.sidebar:
     st.markdown(
         """
         1. Preencha os campos com os dados da safra desejada.  
-        2. Clique em **Calcular rendimento previsto**.  
-        3. Observe o rendimento estimado em kg/ha e a produção total em toneladas.
+        2. Clique em Calcular rendimento previsto.  
+        3. Observe o rendimento estimado, a produção total e a sugestão de culturas.
         """
     )
 
@@ -160,9 +163,9 @@ try:
     municipios = list(categorias_cat[0])  # categorias da coluna 'municipio'
     culturas = list(categorias_cat[1])    # categorias da coluna 'cultura'
 except Exception:
-    st.warning(
+    st.info(
         "Não foi possível carregar automaticamente a lista de municípios e culturas. "
-        "Os campos serão livres; utilize valores compatíveis com o dataset de treinamento."
+        "Os campos serão preenchidos manualmente."
     )
 
 
@@ -219,10 +222,40 @@ st.markdown("---")
 
 
 # =========================================================
-# Predição
+# Função auxiliar: recomendar melhores culturas
+# =========================================================
+def recomendar_culturas(municipio, ano, df):
+    """
+    Retorna um ranking das culturas com maior rendimento médio
+    para o município e um intervalo de anos em torno do ano informado.
+    """
+    # Filtra por município e janela de anos (ex: ano-5 até ano)
+    janela_inicio = ano - 5
+    if janela_inicio < df["ano"].min():
+        janela_inicio = df["ano"].min()
+
+    filtro = df[
+        (df["municipio"] == municipio)
+        & (df["ano"].between(janela_inicio, ano))
+    ]
+
+    # Se não houver dados suficientes, usa todo o dataset
+    if filtro.empty:
+        filtro = df.copy()
+
+    ranking = (
+        filtro.groupby("cultura")["rendimento_kg_ha"]
+        .mean()
+        .sort_values(ascending=False)
+    )
+
+    return ranking
+
+
+# =========================================================
+# Predição + recomendações
 # =========================================================
 if st.button("Calcular rendimento previsto"):
-    # Montar DataFrame de entrada com os mesmos nomes de colunas do treino
     input_data = pd.DataFrame(
         {
             "ano": [ano],
@@ -238,7 +271,6 @@ if st.button("Calcular rendimento previsto"):
         y_pred = model.predict(input_data)[0]
         rendimento_previsto = float(y_pred)
 
-        # Estimativa de produção total (toneladas)
         producao_t_estimado = (rendimento_previsto * area_plantada_ha) / 1000.0
 
         st.success(f"Rendimento previsto: {rendimento_previsto:,.2f} kg/ha")
@@ -246,6 +278,29 @@ if st.button("Calcular rendimento previsto"):
             f"Produção total estimada: {producao_t_estimado:,.2f} toneladas "
             f"para {area_plantada_ha:,.1f} hectares."
         )
+
+        # ----------------------------------------
+        # Segunda análise: recomendação de culturas
+        # ----------------------------------------
+        st.markdown("### Sugestão de culturas para este cenário")
+
+        ranking_culturas = recomendar_culturas(municipio, ano, df_full)
+        top3 = ranking_culturas.head(3)
+
+        if not top3.empty:
+            st.write(
+                f"Com base no histórico do município {municipio} "
+                f"e anos próximos de {ano}, as culturas com maior "
+                f"rendimento médio (kg/ha) foram:"
+            )
+            st.table(top3.reset_index().rename(
+                columns={"cultura": "Cultura", "rendimento_kg_ha": "Rendimento médio (kg/ha)"}
+            ))
+        else:
+            st.write(
+                "Não foi possível calcular recomendações específicas. "
+                "Verifique se o município informado existe no dataset."
+            )
 
     except Exception as e:
         st.error("Ocorreu um erro ao realizar a predição. Verifique os dados de entrada.")
