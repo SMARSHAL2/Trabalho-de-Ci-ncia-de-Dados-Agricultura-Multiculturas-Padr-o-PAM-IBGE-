@@ -1,0 +1,1 @@
+# Trabalho-de-Ci-ncia-de-Dados-Agricultura-Multiculturas-Padr-o-PAM-IBGE-
