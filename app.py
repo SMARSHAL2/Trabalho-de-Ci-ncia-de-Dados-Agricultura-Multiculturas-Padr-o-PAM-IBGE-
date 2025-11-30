@@ -3,6 +3,11 @@ import pandas as pd
 import numpy as np
 import joblib
 
+import streamlit as st
+import sklearn
+st.write("Versão do scikit-learn no Streamlit:", sklearn.__version__)
+
+
 # =========================================================
 # Configuração da página
 # =========================================================
@@ -20,14 +25,14 @@ def load_model():
     model = joblib.load("modelo_pam_multiculturas.pkl")
     return model
 
-model = None
 try:
     model = load_model()
 except FileNotFoundError:
     st.error(
         "Arquivo **modelo_pam_multiculturas.pkl** não encontrado.\n\n"
-        "Coloque o arquivo na mesma pasta do app antes de executar."
+        "Verifique se ele está na mesma pasta do `app.py` no repositório."
     )
+    st.stop()
 
 # =========================================================
 # Sidebar – informações do trabalho
@@ -35,10 +40,10 @@ except FileNotFoundError:
 with st.sidebar:
     st.markdown("### Trabalho de Ciência de Dados")
     st.markdown("**Tema:** Predição de rendimento agrícola (PAM sintético)")
-    st.markdown("**Disciplina:** Ciência de Dados")
+    st.markdown("**Tipo de modelo:** Regressão (Random Forest)")
     st.markdown("**Dupla:**")
-    st.markdown("- Jalisson Ternus – RA: 405155")
-    st.markdown("- Geslon Gish – RA: 395124")
+    st.markdown("- Jalisson Ternus – RA 405155")
+    st.markdown("- Geslon Gish – RA 395124")
     st.markdown("---")
     st.markdown("### Como usar o app")
     st.markdown(
@@ -57,19 +62,21 @@ st.title("🌾 Predição de rendimento agrícola (kg/ha)")
 st.markdown(
     """
 Este aplicativo faz parte de um trabalho prático de **Ciência de Dados**, 
-no qual foi treinado um modelo de regressão (Random Forest) para estimar o 
+no qual foi treinado um modelo de regressão (*Random Forest*) para estimar o 
 **rendimento agrícola (kg/ha)** de diferentes culturas a partir de dados sintéticos.
 
-Os dados utilizados são inspirados na Produção Agrícola Municipal (PAM), 
+Os dados utilizados são inspirados na Produção Agrícola Municipal (PAM/IBGE), 
 considerando variáveis como ano, município, cultura, área plantada, 
 precipitação anual e temperatura média.
 """
 )
 
-if model is None:
-    st.stop()
+st.markdown("---")
+st.markdown("## Dados de entrada")
 
-# Tentar recuperar categorias do OneHotEncoder
+# =========================================================
+# Recuperar categorias do OneHotEncoder (se possível)
+# =========================================================
 municipios = None
 culturas = None
 
@@ -77,22 +84,23 @@ try:
     preprocessor = model.named_steps["preprocessor"]
     cat_transformer = preprocessor.named_transformers_["cat"]
     categorias_cat = cat_transformer.categories_
-    municipios = list(categorias_cat[0])  # ['municipio']
-    culturas = list(categorias_cat[1])    # ['cultura']
+    municipios = list(categorias_cat[0])  # categorias da coluna 'municipio'
+    culturas = list(categorias_cat[1])    # categorias da coluna 'cultura'
 except Exception:
     st.warning(
         "Não foi possível carregar automaticamente a lista de municípios/culturas. "
         "Os campos serão livres, mas é importante usar valores compatíveis com o treino."
     )
 
-st.markdown("## Dados de entrada")
-
+# =========================================================
+# Formulário de entrada
+# =========================================================
 col1, col2 = st.columns(2)
 
 with col1:
     ano = st.number_input(
         "Ano da safra",
-        min_value=2000,
+        min_value=2005,
         max_value=2100,
         value=2024,
         step=1,
@@ -135,7 +143,11 @@ with col2:
 
 st.markdown("---")
 
+# =========================================================
+# Predição
+# =========================================================
 if st.button("Calcular rendimento previsto"):
+    # Montar DataFrame de entrada com os mesmos nomes de colunas do treino
     input_data = pd.DataFrame(
         {
             "ano": [ano],
@@ -151,6 +163,7 @@ if st.button("Calcular rendimento previsto"):
         y_pred = model.predict(input_data)[0]
         rendimento_previsto = float(y_pred)
 
+        # estimativa de produção total (toneladas)
         producao_t_estimado = (rendimento_previsto * area_plantada_ha) / 1000.0
 
         st.success(f"**Rendimento previsto:** {rendimento_previsto:,.2f} kg/ha")
